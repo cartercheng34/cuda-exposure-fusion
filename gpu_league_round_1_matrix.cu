@@ -142,7 +142,7 @@ __global__ void Matrix_Multiplication_AB_Kernel_Poorman(const float* Ae,const fl
 //////////////////////////////////////////////////////////////////////////
 
 #define TILE_SIZE 16
-#define BLOCK_SIZE 16
+
 /*Your may want to declare your global variables here*/
 __global__ void Matrix_Multiplication_AB_Kernel_Your_Version(const float* Ae,const float* Be,float* Ce,const int Am,const int An,const int Bn)
 {
@@ -176,6 +176,7 @@ __global__ void Matrix_Multiplication_AB_Kernel_Your_Version(const float* Ae,con
 			shared_a_tile[ty][tx] = Ae[row * a_columns + phase * TILE_SIZE + tx];
 			shared_b_tile[ty][tx] = Be[(phase * TILE_SIZE + ty) * b_columns + col];
 			__syncthreads();
+
 
 			for (k = 0; k < TILE_SIZE; k++){
 				if (k + (phase * TILE_SIZE) < a_columns){
@@ -238,7 +239,7 @@ __global__ void Get_F_Norm(const float* A)
 	
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 
-	sdata[threadIdx.x] = sqrt(A[i]*A[i]);
+	sdata[threadIdx.x] = A[i]*A[i];
 	
 
 	__syncthreads();
@@ -254,15 +255,15 @@ __global__ void Get_F_Norm(const float* A)
 
 	// write result for this block to global mem
 	if (threadIdx.x == 0)
-		atomicAdd(sum, sdata[0]);
+		atomicAdd(sum, sqrt(sdata[0]));
 	*/
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 
 	float val = 0.f;
 	for (int k = 0; k < i; k++)
-		val += sqrt(A[i] * A[i]);
+		val += (A[i] * A[i]);
 	
-	printf("val = %f\n", val);
+	printf("val = %f\n", sqrt(val));
 }
 /*Your implementation ends*/
 
@@ -399,7 +400,7 @@ __host__ void Test_Matrix_F_Norm_On_GPU(const Matrix& A, float& norm)
 	//// Invoke kernel
 
 	////TODO: call the F norm kernel you implemented, and sum_dev the value to the passed-in variable norm
-	Get_F_Norm <<<1, A.m*A.n>>> (A_on_dev.elements_on_dev);
+	Get_F_Norm<<<1, A.m*A.n>>>(A_on_dev.elements_on_dev);
 	cudaMemcpy(&norm, &sum_dev[0], 1 * sizeof(float), cudaMemcpyDeviceToHost);
 
 	cudaEventRecord(end);
@@ -464,7 +465,7 @@ int main()
 	Test_Matrix_Multiplication_AB_On_GPU(h_A,h_B,h_C);
 	cout<<"AB result: "<<h_C(h_C.m/2,h_C.n/2)<<endl;
 	out<<"R1: "<<h_C(h_C.m/2,h_C.n/2)<<endl;
-
+	
 	Test_Matrix_Multiplication_ATBA_On_GPU(h_A,h_B,h_C2);
 	cout<<"ATBA result: "<<h_C2(h_C2.m/3,h_C2.n/3)<<endl;
 	out<<"R2: "<<h_C2(h_C2.m/3,h_C2.n/3)<<endl;
@@ -474,6 +475,7 @@ int main()
 	Test_Matrix_F_Norm_On_GPU(h_A,f_norm);
 	cout<<"F-norm result: "<<f_norm<<endl;
 	out<<"R3: "<<f_norm<<endl;
+	
 
 	return 0;
 }
