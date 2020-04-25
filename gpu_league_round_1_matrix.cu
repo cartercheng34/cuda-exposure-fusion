@@ -397,9 +397,10 @@ __host__ void Test_Matrix_F_Norm_On_GPU(const Matrix& A, float& norm)
 	cudaEventRecord(start);
 
 	//// Invoke kernel
+
 	////TODO: call the F norm kernel you implemented, and sum_dev the value to the passed-in variable norm
 	Get_F_Norm <<<1, A.m*A.n>>> (A_on_dev.elements_on_dev);
-	cudaMemcpy(&norm, &sum_dev[0], 1 * sizeof(int), cudaMemcpyDeviceToHost);
+	cudaMemcpy(&norm, &sum_dev[0], 1 * sizeof(float), cudaMemcpyDeviceToHost);
 
 	cudaEventRecord(end);
 	cudaEventSynchronize(end);
