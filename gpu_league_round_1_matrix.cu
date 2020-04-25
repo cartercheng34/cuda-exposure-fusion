@@ -152,8 +152,8 @@ __global__ void Matrix_Multiplication_AB_Kernel_Your_Version(const float* Ae,con
 
 	
 
-	__shared__ int shared_a_tile[TILE_SIZE][TILE_SIZE];
-	__shared__ int shared_b_tile[TILE_SIZE][TILE_SIZE];
+	__shared__ float shared_a_tile[TILE_SIZE][TILE_SIZE];
+	__shared__ float shared_b_tile[TILE_SIZE][TILE_SIZE];
 
 	int tx = threadIdx.x;
 	int ty = threadIdx.y;
@@ -219,6 +219,32 @@ __global__ void Matrix_Multiplication_ATBA_Kernel_Poorman(const float* Ae,const 
 __global__ void Matrix_Multiplication_ATBA_Kernel_Your_Version(const float* Ae,const float* Be,float* Ce,const int Am,const int An)
 {
 	/*Your implementation starts*/
+	
+	int i = blockIdx.x * blockDim.x + threadIdx.x;
+	int j = blockIdx.y * blockDim.y + threadIdx.y;
+
+	
+	int bid = blockIdx.x + blockIdx.y * gridDim.x;
+	int tid = bid * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
+
+	extern __shared__ float shared_a[];
+	extern __shared__ float shared_b[];
+	/*
+	if(tid < Am * An)
+		shared_a[tid] = Ae[tid];
+	__syncthreads();
+
+	if (tid < An * An)
+		shared_b[tid] = Be[tid];
+	__syncthreads();
+	*/
+
+	float val = 0.f;
+	for (int l = 0; l < Am; l++)
+		for (int k = k = 0; k < Am; k++)
+			val += Ae[l * An + i] * Be[l * Am + k] * Ae[k * An + j];
+	Ce[i * An + j] = val;
+	
 	/*Your implementation ends*/
 }
 
@@ -231,13 +257,15 @@ __global__ void Matrix_Multiplication_ATBA_Kernel_Your_Version(const float* Ae,c
 ////Please write your own kernel function here, and call it in the function Test_F_Norm_On_GPU to test its correctness and performance
 /*Your implementation starts*/
 
-__global__ void Get_F_Norm(const float* A)
+__global__ void Get_F_Norm(const float* A, float* sum)
 {
-	/*
+	
 	__shared__ float sdata[256];
-	printf("sdata =\n");
+	//printf("sdata =\n");
 	
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+	
 
 	sdata[threadIdx.x] = A[i]*A[i];
 	
@@ -255,15 +283,23 @@ __global__ void Get_F_Norm(const float* A)
 
 	// write result for this block to global mem
 	if (threadIdx.x == 0)
-		atomicAdd(sum, sqrt(sdata[0]));
-	*/
-	int i = blockIdx.x * blockDim.x + threadIdx.x;
+		atomicAdd(sum, (sdata[0]));
+	
+	
+	//printf("val = %f\n", sum[0]);
+	
+	/*
+	int bid = blockIdx.x + blockIdx.y * gridDim.x;
+	int i = bid * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
 
 	float val = 0.f;
 	for (int k = 0; k < i; k++)
-		val += (A[i] * A[i]);
+		sum[0] += (A[i] * A[i]);
 	
-	printf("val = %f\n", sqrt(val));
+	sum[0] = sqrt(sum[0]);
+	printf("val = %f\n", A[i]);
+	*/
+	
 }
 /*Your implementation ends*/
 
@@ -351,14 +387,14 @@ __host__ void Test_Matrix_Multiplication_ATBA_On_GPU(const Matrix& A,const Matri
 	const int block_num_y=C.n/block_size;
 
 	////TODO: this is a sample implementation. Comment it out to test your own code.
-	Matrix_Multiplication_ATBA_Kernel_Poorman<<<dim3(block_num_x,block_num_y),dim3(block_size,block_size)>>>
-		(A_on_dev.elements_on_dev,B_on_dev.elements_on_dev,C_on_dev.elements_on_dev,A_on_dev.m,A_on_dev.n);
+	//Matrix_Multiplication_ATBA_Kernel_Poorman<<<dim3(block_num_x,block_num_y),dim3(block_size,block_size)>>>
+	//	(A_on_dev.elements_on_dev,B_on_dev.elements_on_dev,C_on_dev.elements_on_dev,A_on_dev.m,A_on_dev.n);
 
 	////TODO: Uncomment this to test your own implementation.
 	////NOTICE: You do not have to use the block_size I specified here. You may customize the size of your grid and blocks for better performance.
 	
-	//Matrix_Multiplication_ATBA_Kernel_Your_Version<<<dim3(block_num_x,block_num_y),dim3(block_size,block_size)>>>
-	//	(A_on_dev.elements_on_dev,B_on_dev.elements_on_dev,C_on_dev.elements_on_dev,A_on_dev.m,A_on_dev.n);
+	Matrix_Multiplication_ATBA_Kernel_Your_Version<<<dim3(block_num_x,block_num_y),dim3(block_size,block_size)>>>
+		(A_on_dev.elements_on_dev,B_on_dev.elements_on_dev,C_on_dev.elements_on_dev,A_on_dev.m,A_on_dev.n);
 
 	cudaEventRecord(end);
 	cudaEventSynchronize(end);
@@ -388,8 +424,6 @@ __host__ void Test_Matrix_F_Norm_On_GPU(const Matrix& A, float& norm)
 	cudaMalloc((void**)&sum_dev, 1 * sizeof(float));
 	cudaMemcpy(sum_dev, a_host, 1 * sizeof(float), cudaMemcpyHostToDevice);
 
-	printf("A = %d\n", A.m*A.n);
-
 	cudaEvent_t start,end;
 	cudaEventCreate(&start);
 	cudaEventCreate(&end);
@@ -398,10 +432,22 @@ __host__ void Test_Matrix_F_Norm_On_GPU(const Matrix& A, float& norm)
 	cudaEventRecord(start);
 
 	//// Invoke kernel
+	const int block_size = 16;
+	const int block_num_x = A.m / block_size;
+	const int block_num_y = A.n / block_size;
 
 	////TODO: call the F norm kernel you implemented, and sum_dev the value to the passed-in variable norm
-	Get_F_Norm<<<1, A.m*A.n>>>(A_on_dev.elements_on_dev);
+	Get_F_Norm<<<dim3(block_num_x * block_num_y), dim3(block_size*block_size) >>>(A_on_dev.elements_on_dev, sum_dev);
+	cudaError_t cudaStatus = cudaGetLastError();
+	if (cudaStatus != cudaSuccess)
+	{
+		fprintf(stderr, "f-norm failed: %s\n", cudaGetErrorString(cudaStatus));
+		
+	}
+	
 	cudaMemcpy(&norm, &sum_dev[0], 1 * sizeof(float), cudaMemcpyDeviceToHost);
+
+	norm = sqrt(norm);
 
 	cudaEventRecord(end);
 	cudaEventSynchronize(end);
@@ -470,7 +516,7 @@ int main()
 	cout<<"ATBA result: "<<h_C2(h_C2.m/3,h_C2.n/3)<<endl;
 	out<<"R2: "<<h_C2(h_C2.m/3,h_C2.n/3)<<endl;
 	*/
-
+	
 	float f_norm=0.f;
 	Test_Matrix_F_Norm_On_GPU(h_A,f_norm);
 	cout<<"F-norm result: "<<f_norm<<endl;
