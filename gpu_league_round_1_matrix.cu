@@ -150,10 +150,8 @@ __global__ void Matrix_Multiplication_AB_Kernel_Your_Version(const float* Ae,con
 	
 	// Block index
 
-	
-
-	__shared__ float shared_a_tile[TILE_SIZE][TILE_SIZE];
-	__shared__ float shared_b_tile[TILE_SIZE][TILE_SIZE];
+	__shared__ float shared_a[TILE_SIZE][TILE_SIZE];
+	__shared__ float shared_b[TILE_SIZE][TILE_SIZE];
 
 	int tx = threadIdx.x;
 	int ty = threadIdx.y;
@@ -167,22 +165,16 @@ __global__ void Matrix_Multiplication_AB_Kernel_Your_Version(const float* Ae,con
 	//check if thread directly maps to the dimensions of the resulting matrix
 	if (row < a_rows && col < b_columns){
 		float result = 0;
-		int k;
-		int phase;
-
-		//calculate C matrix indexes in phases. Each phase shares 
-		//TILE_SIZE * TILE_SIZE data copied to the shared matrix A and matrix B.
-		for (phase = 0; phase <= a_columns / TILE_SIZE; phase++){
-			shared_a_tile[ty][tx] = Ae[row * a_columns + phase * TILE_SIZE + tx];
-			shared_b_tile[ty][tx] = Be[(phase * TILE_SIZE + ty) * b_columns + col];
+		
+		for (int phase = 0; phase <= a_columns / TILE_SIZE; phase++){
+			shared_a[ty][tx] = Ae[row * a_columns + phase * TILE_SIZE + tx];
+			shared_b[ty][tx] = Be[(phase * TILE_SIZE + ty) * b_columns + col];
 			__syncthreads();
 
-
-			for (k = 0; k < TILE_SIZE; k++){
+			for (int k = 0; k < TILE_SIZE; k++){
 				if (k + (phase * TILE_SIZE) < a_columns){
-					result += (shared_a_tile[ty][k] * shared_b_tile[k][tx]);
-					
-				}		
+					result += (shared_a[ty][k] * shared_b[k][tx]);
+				}
 			}
 			__syncthreads();
 		}
@@ -191,9 +183,6 @@ __global__ void Matrix_Multiplication_AB_Kernel_Your_Version(const float* Ae,con
 		Ce[row * b_columns + col] = result;
 	}
 	
-	
-	
-
 	/*Your implementation ends*/
 }
 
@@ -211,6 +200,33 @@ __global__ void Matrix_Multiplication_ATBA_Kernel_Poorman(const float* Ae,const 
 	Ce[i*An+j]=val;
 }
 
+
+// ref: https://devblogs.nvidia.com/efficient-matrix-transpose-cuda-cc/
+__global__ void transpose(float* AT, float* A, int width, int height)
+{
+	//A(m, n), width = m, height = n
+	__shared__ float s_block[TILE_SIZE][TILE_SIZE];
+	
+	
+	int x = blockIdx.x * TILE_SIZE + threadIdx.x;
+	int y = blockIdx.y * TILE_SIZE + threadIdx.y;
+
+	if ((x < width) && (y < height)){
+		int i = y * width + x;
+		s_block[threadIdx.y][threadIdx.x] = A[i];
+	}
+
+	__syncthreads();
+
+	x = blockIdx.y * TILE_SIZE + threadIdx.x;
+	y = blockIdx.x * TILE_SIZE + threadIdx.y;
+
+	if ((x < height) && (y < width)){
+		int i = y * height + x;
+		AT[i] = s_block[threadIdx.x][threadIdx.y];
+	}
+}
+
 //////////////////////////////////////////////////////////////////////////
 ////Task 2: calculate the matrix multiplication in the following kernel function. 
 ////The function parameters are the same as the sample function
@@ -219,31 +235,6 @@ __global__ void Matrix_Multiplication_ATBA_Kernel_Poorman(const float* Ae,const 
 __global__ void Matrix_Multiplication_ATBA_Kernel_Your_Version(const float* Ae,const float* Be,float* Ce,const int Am,const int An)
 {
 	/*Your implementation starts*/
-	
-	int i = blockIdx.x * blockDim.x + threadIdx.x;
-	int j = blockIdx.y * blockDim.y + threadIdx.y;
-
-	
-	int bid = blockIdx.x + blockIdx.y * gridDim.x;
-	int tid = bid * (blockDim.x * blockDim.y) + threadIdx.y * blockDim.x + threadIdx.x;
-
-	extern __shared__ float shared_a[];
-	extern __shared__ float shared_b[];
-	/*
-	if(tid < Am * An)
-		shared_a[tid] = Ae[tid];
-	__syncthreads();
-
-	if (tid < An * An)
-		shared_b[tid] = Be[tid];
-	__syncthreads();
-	*/
-
-	float val = 0.f;
-	for (int l = 0; l < Am; l++)
-		for (int k = k = 0; k < Am; k++)
-			val += Ae[l * An + i] * Be[l * Am + k] * Ae[k * An + j];
-	Ce[i * An + j] = val;
 	
 	/*Your implementation ends*/
 }
@@ -370,8 +361,13 @@ __host__ void Test_Matrix_Multiplication_ATBA_On_GPU(const Matrix& A,const Matri
 	A_on_dev=A;
 	Matrix B_on_dev(B.m,B.n,false);
 	B_on_dev=B;
+
+	Matrix AT_on_dev(A.m, A.n, false);
+	AT_on_dev = A;
 	
 	//// Allocate C in device memory
+	Matrix tmp_on_dev(A_on_dev.m, A_on_dev.n, false);
+
 	Matrix C_on_dev(A_on_dev.n,A_on_dev.n,false);
 
 	cudaEvent_t start,end;
@@ -388,13 +384,20 @@ __host__ void Test_Matrix_Multiplication_ATBA_On_GPU(const Matrix& A,const Matri
 
 	////TODO: this is a sample implementation. Comment it out to test your own code.
 	//Matrix_Multiplication_ATBA_Kernel_Poorman<<<dim3(block_num_x,block_num_y),dim3(block_size,block_size)>>>
-	//	(A_on_dev.elements_on_dev,B_on_dev.elements_on_dev,C_on_dev.elements_on_dev,A_on_dev.m,A_on_dev.n);
+		//(A_on_dev.elements_on_dev,B_on_dev.elements_on_dev,C_on_dev.elements_on_dev,A_on_dev.m,A_on_dev.n);
 
 	////TODO: Uncomment this to test your own implementation.
 	////NOTICE: You do not have to use the block_size I specified here. You may customize the size of your grid and blocks for better performance.
-	
-	Matrix_Multiplication_ATBA_Kernel_Your_Version<<<dim3(block_num_x,block_num_y),dim3(block_size,block_size)>>>
-		(A_on_dev.elements_on_dev,B_on_dev.elements_on_dev,C_on_dev.elements_on_dev,A_on_dev.m,A_on_dev.n);
+	transpose << <dim3(block_num_x, block_num_y), dim3(block_size, block_size) >> >
+		(AT_on_dev.elements_on_dev, A_on_dev.elements_on_dev, A_on_dev.m, A_on_dev.n);
+
+	Matrix_Multiplication_AB_Kernel_Your_Version << <dim3(block_num_x, block_num_y), dim3(block_size, block_size) >> >
+		(B_on_dev.elements_on_dev, A_on_dev.elements_on_dev, tmp_on_dev.elements_on_dev, B_on_dev.m, B_on_dev.n, A_on_dev.n);
+
+	Matrix_Multiplication_AB_Kernel_Your_Version << <dim3(block_num_x, block_num_y), dim3(block_size, block_size) >> >
+		(AT_on_dev.elements_on_dev, tmp_on_dev.elements_on_dev, C_on_dev.elements_on_dev, A_on_dev.n, A_on_dev.m, A_on_dev.n);
+	//Matrix_Multiplication_ATBA_Kernel_Your_Version<<<dim3(block_num_x,block_num_y),dim3(block_size,block_size)>>>
+	//	(A_on_dev.elements_on_dev,B_on_dev.elements_on_dev,C_on_dev.elements_on_dev,A_on_dev.m,A_on_dev.n);
 
 	cudaEventRecord(end);
 	cudaEventSynchronize(end);
@@ -479,49 +482,47 @@ int main()
 	////So please test your functions with different size and initial values.
 	//////////////////////////////////////////////////////////////////////////
 
-	const int m=512;
-	const int n=2048;
-	const int p=1024;
+	const int m = 512;
+	const int n = 2048;
+	const int p = 1024;
 
-	Matrix h_A(m,n);
-	for(int i=0;i<m;i++){
-		for(int j=0;j<n;j++){
-			h_A(i,j)=1.f;
+	Matrix h_A(m, n);
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < n; j++) {
+			h_A(i, j) = 1.f;
 		}
 	}
 
-	Matrix h_AT(n,m);
-	for(int i=0;i<n;i++){
-		for(int j=0;j<m;j++){
-			h_AT(i,j)=1.f;
+	Matrix h_B(n, p);
+	for (int i = 0; i < n; i++) {
+		for (int j = 0; j < p; j++) {
+			h_B(i, j) = 1.f;
 		}
 	}
 
-	Matrix h_B(n,p);
-	for(int i=0;i<n;i++){
-		for(int j=0;j<p;j++){
-			h_B(i,j)=1.f;
+	Matrix h_C(m, p);
+
+	Matrix h_B2(m, m);
+	for (int i = 0; i < m; i++) {
+		for (int j = 0; j < m; j++) {
+			h_B2(i, j) = 1.f;
 		}
 	}
 
-	Matrix h_C(m,p);
-	Matrix h_C2(n,n);
+	Matrix h_C2(n, n);
 
-	/*
-	Test_Matrix_Multiplication_AB_On_GPU(h_A,h_B,h_C);
-	cout<<"AB result: "<<h_C(h_C.m/2,h_C.n/2)<<endl;
-	out<<"R1: "<<h_C(h_C.m/2,h_C.n/2)<<endl;
-	
-	Test_Matrix_Multiplication_ATBA_On_GPU(h_A,h_B,h_C2);
-	cout<<"ATBA result: "<<h_C2(h_C2.m/3,h_C2.n/3)<<endl;
-	out<<"R2: "<<h_C2(h_C2.m/3,h_C2.n/3)<<endl;
-	*/
-	
-	float f_norm=0.f;
-	Test_Matrix_F_Norm_On_GPU(h_A,f_norm);
-	cout<<"F-norm result: "<<f_norm<<endl;
-	out<<"R3: "<<f_norm<<endl;
-	
+	Test_Matrix_Multiplication_AB_On_GPU(h_A, h_B, h_C);
+	cout << "AB result: " << h_C(h_C.m / 2, h_C.n / 2) << endl;
+	out << "R1: " << h_C(h_C.m / 2, h_C.n / 2) << endl;
+
+	Test_Matrix_Multiplication_ATBA_On_GPU(h_A, h_B2, h_C2);
+	cout << "ATBA result: " << h_C2(h_C2.m / 3, h_C2.n / 3) << endl;
+	out << "R2: " << h_C2(h_C2.m / 3, h_C2.n / 3) << endl;
+
+	float f_norm = 0.f;
+	Test_Matrix_F_Norm_On_GPU(h_A, f_norm);
+	cout << "F-norm result: " << f_norm << endl;
+	out << "R3: " << f_norm << endl;
 
 	return 0;
 }
