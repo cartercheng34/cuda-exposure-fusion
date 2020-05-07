@@ -64,15 +64,15 @@ __host__ void N_Body_Simulation_CPU_Poorman(double* pos_x,double* pos_y,double* 
 		}
 	}
 	//debug
-	/*double rx = pos_x[62] - pos_x[32];
-	double ry = pos_y[62] - pos_y[32];
-	double rz = pos_z[62] - pos_z[32];
+	/*double rx = pos_x[4095] - pos_x[2048];
+	double ry = pos_y[4095] - pos_y[2048];
+	double rz = pos_z[4095] - pos_z[2048];
 	double dis_squared = rx * rx + ry * ry + rz * rz;
 	double one_over_dis_cube = 1.0 / pow(sqrt(dis_squared + epsilon_squared), 3);
 	
-	printf("x acl: %.6f\n", one_over_dis_cube);
-	printf("y acl: %.6f\n", acl_y[32]);
-	printf("z acl: %.6f\n", acl_z[32]);*/
+	printf("x acl: %.6f\n", pos_x[4095]);
+	printf("y acl: %.6f\n", pos_y[4095]);
+	printf("z acl: %.6f\n", pos_z[4095]);*/
 	
 
 	////Step 3: explicit time integration to update the velocity and position of each particle
@@ -93,8 +93,8 @@ __host__ void N_Body_Simulation_CPU_Poorman(double* pos_x,double* pos_y,double* 
 //////////////////////////////////////////////////////////////////////////
 ////TODO 1: your GPU variables and functions start here
 
-const int block_num = 4096/128;
-const int threads_num = 128;
+
+const int threads_num = 256;
 
 __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////position array
 	double* vel_x, double* vel_y, double* vel_z,		////velocity array
@@ -122,8 +122,7 @@ __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////po
 	double3 acl = { 0.0f, 0.0f, 0.0f };
 
 	
-	//const double mass = 100.0;
-	//int counter = 0;
+
 	
 	for (unsigned int tile = 0; tile < n; tile += threads_num) {
 
@@ -145,9 +144,7 @@ __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////po
 			double3 r = { other.x - body.x,
 						other.y - body.y,
 						other.z - body.z };
-			/*if (r.x == 0.0 && r.y == 0.0 && r.z == 0.0)
-				continue;*/
-
+			
 			double dis_squared = r.x * r.x + r.y * r.y + r.z * r.z;
 			double one_over_dis_cube = 1.0 / pow(sqrt(dis_squared + epsilon_squared), 3);
 
@@ -162,10 +159,10 @@ __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////po
 
 	//debug
 	
-	//if (tid == 2048) {
-	//	double3 other = { localPosX[2],
-	//						localPosY[2],
-	//						localPosZ[2] };
+	//if (tid == 4095) {
+	//	double3 other = { localPosX[127],
+	//						localPosY[127],
+	//						localPosZ[127] };
 	//	double3 r = { other.x - body.x,
 	//				other.y - body.y,
 	//				other.z - body.z };
@@ -174,27 +171,40 @@ __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////po
 	//	double one_over_dis_cube = 1.0 / pow(sqrt(dis_squared + epsilon_squared), 3);
 	//	//printf("counter: %d", counter);
 
-	//	printf("x dis: %.6f\n", one_over_dis_cube);
-	//	printf("y dis: %.6f\n", acl.y);
-	//	printf("z dis: %.6f\n", acl.z);
+	//	printf("x dis: %.6f\n", localPosX[127]);
+	//	printf("y dis: %.6f\n", localPosY[127]);
+	//	printf("z dis: %.6f\n", localPosZ[127]);
 	//}
 	
 
 	acl_x[tid] = acl.x ;
 	acl_y[tid] = acl.y ;
 	acl_z[tid] = acl.z ;
+	
 
 	vel_x[tid] += acl_x[tid] * dt;
 	vel_y[tid] += acl_y[tid] * dt;
 	vel_z[tid] += acl_z[tid] * dt;
+	
+
+	//pos_x[tid] += vel_x[tid] * dt;
+	//pos_y[tid] += vel_y[tid] * dt;
+	//pos_z[tid] += vel_z[tid] * dt;
+	
+	
+}
+
+__global__ void update_pos(double* pos_x, double* pos_y, double* pos_z,		////position array
+	double* vel_x, double* vel_y, double* vel_z,
+	const double dt)											
+{
+	int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
 	pos_x[tid] += vel_x[tid] * dt;
 	pos_y[tid] += vel_y[tid] * dt;
 	pos_z[tid] += vel_z[tid] * dt;
 
-	
 }
-
 
 
 ////Your implementations end here
@@ -213,8 +223,10 @@ const double epsilon=1e-2;						////epsilon added in the denominator to avoid 0-
 const double epsilon_squared=epsilon*epsilon;	////epsilon squared
 
 ////We use grid_size=4 to help you debug your code, change it to a bigger number (e.g., 16, 32, etc.) to test the performance of your GPU code
-const unsigned int grid_size=16;					////assuming particles are initialized on a background grid
+const unsigned int grid_size=32;					////assuming particles are initialized on a background grid
 const unsigned int particle_n=pow(grid_size,3);	////assuming each grid cell has one particle at the beginning
+
+const int block_num = particle_n / 512;
 
 __host__ void Test_N_Body_Simulation()
 {
@@ -266,7 +278,7 @@ __host__ void Test_N_Body_Simulation()
 	
 	/*for(int i=0;i<time_step_num;i++){
 		N_Body_Simulation_CPU_Poorman(pos_x,pos_y,pos_z,vel_x,vel_y,vel_z,acl_x,acl_y,acl_z,mass,particle_n,dt,epsilon_squared);
-		cout<<"pos on timestep "<<i<<": "<<pos_x[particle_n / 2]<<", "<<pos_y[particle_n / 2]<<", "<<pos_z[particle_n / 2]<<endl;
+		cout<<"pos on timestep "<<i<<": "<<pos_x[particle_n -1]<<", "<<pos_y[particle_n -1]<<", "<<pos_z[particle_n -1]<<endl;
 	}*/
 	
 	
@@ -336,11 +348,15 @@ __host__ void Test_N_Body_Simulation()
 														acl_x_dev, acl_y_dev, acl_z_dev,
 														mass_dev, particle_n, dt, epsilon_squared);
 
+		update_pos << <dim3(block_num), dim3(threads_num) >> > (pos_x_dev, pos_y_dev, pos_z_dev,
+																vel_x_dev, vel_y_dev, vel_z_dev,
+																 dt);
+
 		cudaMemcpy(pos_x, pos_x_dev, particle_n * sizeof(double), cudaMemcpyDeviceToHost);
 		cudaMemcpy(pos_y, pos_y_dev, particle_n * sizeof(double), cudaMemcpyDeviceToHost);
 		cudaMemcpy(pos_z, pos_z_dev, particle_n * sizeof(double), cudaMemcpyDeviceToHost);
 
-		cout << "pos on timestep " << i << ": " << pos_x[particle_n/2] << ", " << pos_y[particle_n/2] << ", " << pos_z[particle_n/2] << endl;
+		cout << "pos on timestep " << i << ": " << pos_x[particle_n /2] << ", " << pos_y[particle_n /2] << ", " << pos_z[particle_n /2] << endl;
 	}
 	
 
