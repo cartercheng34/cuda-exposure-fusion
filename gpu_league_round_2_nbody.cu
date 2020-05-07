@@ -64,13 +64,13 @@ __host__ void N_Body_Simulation_CPU_Poorman(double* pos_x,double* pos_y,double* 
 		}
 	}
 	//debug
-	/*double rx = pos_x[2] - pos_x[0];
-	double ry = pos_y[2] - pos_y[0];
-	double rz = pos_z[2] - pos_z[0];
+	/*double rx = pos_x[62] - pos_x[32];
+	double ry = pos_y[62] - pos_y[32];
+	double rz = pos_z[62] - pos_z[32];
 	double dis_squared = rx * rx + ry * ry + rz * rz;
 	double one_over_dis_cube = 1.0 / pow(sqrt(dis_squared + epsilon_squared), 3);
 	
-	printf("x acl: %.6f\n", acl_x[32]);
+	printf("x acl: %.6f\n", one_over_dis_cube);
 	printf("y acl: %.6f\n", acl_y[32]);
 	printf("z acl: %.6f\n", acl_z[32]);*/
 	
@@ -93,8 +93,8 @@ __host__ void N_Body_Simulation_CPU_Poorman(double* pos_x,double* pos_y,double* 
 //////////////////////////////////////////////////////////////////////////
 ////TODO 1: your GPU variables and functions start here
 
-const int block_num = 1;
-const int threads_num = 64 / block_num;
+const int block_num = 4096/128;
+const int threads_num = 128;
 
 __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////position array
 	double* vel_x, double* vel_y, double* vel_z,		////velocity array
@@ -123,6 +123,7 @@ __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////po
 
 	
 	//const double mass = 100.0;
+	//int counter = 0;
 	
 	for (unsigned int tile = 0; tile < n; tile += threads_num) {
 
@@ -135,7 +136,7 @@ __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////po
 		__syncthreads();
 
 		for (unsigned int index = 0; index < threads_num; index++) {
-			if ((index + threads_num*tile) == tid)
+			if ((index + tile) == tid)
 				continue;
 
 			double3 other = { localPosX[index],
@@ -144,6 +145,8 @@ __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////po
 			double3 r = { other.x - body.x,
 						other.y - body.y,
 						other.z - body.z };
+			/*if (r.x == 0.0 && r.y == 0.0 && r.z == 0.0)
+				continue;*/
 
 			double dis_squared = r.x * r.x + r.y * r.y + r.z * r.z;
 			double one_over_dis_cube = 1.0 / pow(sqrt(dis_squared + epsilon_squared), 3);
@@ -158,24 +161,24 @@ __global__ void compute_acl(double* pos_x, double* pos_y, double* pos_z,		////po
 	}
 
 	//debug
-	/* 
-	if (tid == 32) {
-		double3 other = { localPosX[2],
-							localPosY[2],
-							localPosZ[2] };
-		double3 r = { other.x - body.x,
-					other.y - body.y,
-					other.z - body.z };
+	
+	//if (tid == 2048) {
+	//	double3 other = { localPosX[2],
+	//						localPosY[2],
+	//						localPosZ[2] };
+	//	double3 r = { other.x - body.x,
+	//				other.y - body.y,
+	//				other.z - body.z };
 
-		double dis_squared = r.x * r.x + r.y * r.y + r.z * r.z;
-		double one_over_dis_cube = 1.0 / pow(sqrt(dis_squared + epsilon_squared), 3);
-		//printf("counter: %d", counter);
+	//	double dis_squared = r.x * r.x + r.y * r.y + r.z * r.z;
+	//	double one_over_dis_cube = 1.0 / pow(sqrt(dis_squared + epsilon_squared), 3);
+	//	//printf("counter: %d", counter);
 
-		printf("x dis: %.6f\n", force.x);
-		printf("y dis: %.6f\n", force.y);
-		printf("z dis: %.6f\n", force.z);
-	}
-	*/
+	//	printf("x dis: %.6f\n", one_over_dis_cube);
+	//	printf("y dis: %.6f\n", acl.y);
+	//	printf("z dis: %.6f\n", acl.z);
+	//}
+	
 
 	acl_x[tid] = acl.x ;
 	acl_y[tid] = acl.y ;
@@ -210,7 +213,7 @@ const double epsilon=1e-2;						////epsilon added in the denominator to avoid 0-
 const double epsilon_squared=epsilon*epsilon;	////epsilon squared
 
 ////We use grid_size=4 to help you debug your code, change it to a bigger number (e.g., 16, 32, etc.) to test the performance of your GPU code
-const unsigned int grid_size=4;					////assuming particles are initialized on a background grid
+const unsigned int grid_size=16;					////assuming particles are initialized on a background grid
 const unsigned int particle_n=pow(grid_size,3);	////assuming each grid cell has one particle at the beginning
 
 __host__ void Test_N_Body_Simulation()
