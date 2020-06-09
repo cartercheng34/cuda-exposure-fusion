@@ -4,10 +4,6 @@
 #include <iostream>
 #include <fstream>
 #include<string>
-//#include <thrust/host_vector.h>
-//#include <thrust/device_vector.h>
-//#include <thrust/generate.h>
-//#include <thrust/reduce.h>
 #include <opencv2/opencv.hpp>
 #include "opencv2/core.hpp"
 #include "opencv2/core/cuda_types.hpp"
@@ -19,41 +15,94 @@
 #include <opencv2/cudawarping.hpp>
 #include <opencv2/cudaarithm.hpp>
 
+
 using namespace std;
 using namespace cv;
 
-const int n=8;							////grid size, we will change this value to up to 256 to test your code
-const int g=1;							////padding size
-const int s=(n+2*g)*(n+2*g);			////array size
-//#define I(i,j) (i+g)*(n+2*g)+(j+g)		////2D coordinate -> array index
-//#define S(i,j) (i+g)*(8+2*g)+(j+g)		////2D coordinate -> shared memory index
-//#define B(i,j) i<0||i>=n||j<0||j>=n		////check boundary
 const bool cpu = false;				////set false to turn off print for x and residual
+
+
 
 vector<double> _para = { 1, 1, 1, 8 };
 
 //////////////////////////////////////////////////////////////////////////
 ////TODO 1: your GPU variables and functions start here
-void readImages(vector<Mat>& images)
+void readImages(vector<Mat>& images, int scene_No)
 {
+    if (scene_No == 0) {
+        int numImages = 7;
+        static const char* filenames[] =
+        {
+          "ntu_lib/IMG_0323.jpg",
+          "ntu_lib/IMG_0317.jpg",
+          "ntu_lib/IMG_0318.jpg",
+          "ntu_lib/IMG_0319.jpg",
+          "ntu_lib/IMG_0320.jpg",
+          "ntu_lib/IMG_0321.jpg",
+          "ntu_lib/IMG_0322.jpg",
+        };
 
-    int numImages = 7;
-    static const char* filenames[] =
-    {
-      "ntu_lib/IMG_0323.jpg",
-      "ntu_lib/IMG_0317.jpg",
-      "ntu_lib/IMG_0318.jpg",
-      "ntu_lib/IMG_0319.jpg",
-      "ntu_lib/IMG_0320.jpg",
-      "ntu_lib/IMG_0321.jpg",
-      "ntu_lib/IMG_0322.jpg",
-    };
-
-    for (int i = 0; i < numImages; i++)
-    {
-        Mat im = imread(filenames[i]);
-        images.push_back(im);
+        for (int i = 0; i < numImages; i++)
+        {
+            Mat im = imread(filenames[i]);
+            images.push_back(im);
+        }
     }
+    else if (scene_No == 1) {
+        int numImages = 16;
+        static const char* filenames[] =
+        {
+          "scene2/SAM_0015.jpg",
+          "scene2/SAM_0016.jpg",
+          "scene2/SAM_0017.jpg",
+          "scene2/SAM_0018.jpg",
+          "scene2/SAM_0019.jpg",
+          "scene2/SAM_0020.jpg",
+          "scene2/SAM_0021.jpg",
+          "scene2/SAM_0022.jpg",
+          "scene2/SAM_0023.jpg",
+          "scene2/SAM_0024.jpg",
+          "scene2/SAM_0025.jpg",
+          "scene2/SAM_0026.jpg",
+          "scene2/SAM_0027.jpg",
+          "scene2/SAM_0028.jpg",
+          "scene2/SAM_0029.jpg",
+          "scene2/SAM_0030.jpg",
+        };
+
+        for (int i = 0; i < numImages; i++)
+        {
+            Mat im = imread(filenames[i]);
+            images.push_back(im);
+        }
+    }
+    else if (scene_No == 2) {
+        int numImages = 14;
+        static const char* filenames[] =
+        {
+          "library/DSC00716.jpg",
+          "library/DSC00717.jpg",
+          "library/DSC00718.jpg",
+          "library/DSC00719.jpg",
+          "library/DSC00720.jpg",
+          "library/DSC00721.jpg",
+          "library/DSC00722.jpg",
+          "library/DSC00723.jpg",
+          "library/DSC00724.jpg",
+          "library/DSC00725.jpg",
+          "library/DSC00726.jpg",
+          "library/DSC00727.jpg",
+          "library/DSC00728.jpg",
+          "library/DSC00729.jpg",
+        };
+
+        for (int i = 0; i < numImages; i++)
+        {
+            Mat im = imread(filenames[i]);
+            images.push_back(im);
+        }
+    }
+    
 
 }
 
@@ -90,7 +139,7 @@ void CPU_MERTENS_process(const vector<Mat>& pics, const vector<Mat>& gW, Mat& re
         sqrt(S / 3.0, S);
         //well-exposured
         for (int c = 0; c < 3; ++c) {
-            pow((split_pic[c] - 0.5) / (0.2 * sqrt(2)), 2, s);
+            pow((split_pic[c] - 0.5) / (2 * sqrt(0.2)), 2, s);
             exp(-s, s);
             E = E.mul(s);
         }
@@ -107,17 +156,15 @@ void CPU_MERTENS_process(const vector<Mat>& pics, const vector<Mat>& gW, Mat& re
         W[i] = W[i].mul(E) + 1e-20;
         ALL_W += W[i];
 
-        cout  << "C: " << gray.at<double>(969, 3826) << endl;
-        cout << "S: " << S.at<double>(969, 3826) << endl;
-        cout << "E: " << E.at<double>(969, 3826) << endl;
-        cout << "--------------------------------" << endl;
+        /*cout  << "C: " << gray.at<double>(2907, 3625) << endl;
+        cout << "S: " << S.at<double>(2907, 3625) << endl;
+        cout << "E: " << E.at<double>(2907, 3625) << endl;
+        cout << "--------------------------------" << endl;*/
     }
 
-    for (int i = 0; i < pic_num; i++)
-        cout << i << ": " << W[i].at<double>(969, 3826) << endl;
-    auto end = chrono::system_clock::now();
-    chrono::duration<double> t = end - start;
-    cout << "run time: " << t.count() * 1000. << " ms." << endl;
+    /*for (int i = 0; i < pic_num; i++)
+        cout << i << ": " << W[i].at<double>(2907, 3625) << endl;*/
+    
 
     Mat up;
     vector<Mat> final_pics(_para[3] + 1);
@@ -127,8 +174,8 @@ void CPU_MERTENS_process(const vector<Mat>& pics, const vector<Mat>& gW, Mat& re
         buildPyramid(_pics[i], pics_pyr[i], _para[3]);
         buildPyramid(W[i], W_pyr[i], _para[3]);
     }
-    for (int i = 0; i < pic_num; i++)
-        cout << i << ": " << W[i].at<double>(969, 3826) << endl;
+    /*for (int i = 0; i < pic_num; i++)
+        cout << i << ": " << W[i].at<double>(2907, 3625) << endl;*/
     for (int i = 0; i <= _para[3]; ++i)
         final_pics[i] = Mat(pics_pyr[0][i].size(), CV_64FC3, Scalar::all(0));
     for (int i = 0; i < pic_num; ++i) {
@@ -150,6 +197,9 @@ void CPU_MERTENS_process(const vector<Mat>& pics, const vector<Mat>& gW, Mat& re
         final_pics[i] += up;
     }
     result = final_pics[0].clone();
+    auto end = chrono::system_clock::now();
+    chrono::duration<double> t = end - start;
+    cout << "run time: " << t.count() * 1000. << " ms." << endl;
 }
 
 __global__ void Color2Gray(cuda::PtrStepSz<double> R, cuda::PtrStepSz<double> G, cuda::PtrStepSz<double> B, cuda::PtrStepSz<double> gray)
@@ -157,136 +207,111 @@ __global__ void Color2Gray(cuda::PtrStepSz<double> R, cuda::PtrStepSz<double> G,
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
     int threadId = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
 
-    int x = threadId % 3980;
-    int y = threadId / 3980;
+    int x = threadId % R.cols;
+    int y = threadId / R.cols;
 
-    gray(y, x) = (R(y, x) * 0.114 + G(y, x) * 0.587 + B(y, x) * 0.299) / 3.0f;
+    if (y < R.rows) {
+        gray(y, x) = (R(y, x) * 0.114 + G(y, x) * 0.587 + B(y, x) * 0.299) / 3.0f;
+    }
+
+    
 
     __syncthreads();
 }
 
-__device__ bool checkBound(int x, int y)
+__device__ bool checkBound(int x, int y, int xbound, int ybound)
 {
-    return x < 0 || x >= 3980 || y < 0 || y >= 2999;
+    return x < 0 || x >= xbound || y < 0 || y >= ybound;
 }
 
-__global__ void GPU_Mertens(cuda::PtrStepSz<uchar3> color_input, cuda::PtrStepSz<double> gray, cuda::PtrStepSz<double> C,
-                            cuda::PtrStepSz<double> S, cuda::PtrStepSz<double> E,
+__global__ void GPU_Mertens(cuda::PtrStepSz<uchar3> color_input, cuda::PtrStepSz<double> gray, cuda::PtrStepSz<float> C,
+                            cuda::PtrStepSz<float> S, cuda::PtrStepSz<float> E,
                             cuda::PtrStepSz<double> R, cuda::PtrStepSz<double> G, cuda::PtrStepSz<double> B)
 {
     int blockId = blockIdx.x + blockIdx.y * gridDim.x; 
     int threadId = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
 
-    int x = threadId % 3980;
-    int y = threadId / 3980;
+    int x = threadId % color_input.cols;
+    int y = threadId / color_input.cols;
+
+    if (y < color_input.rows) {
+        //contrast
+        //lap filter
+        double right, left, up, bottom;
+        if (checkBound(x + 1, y, color_input.cols, color_input.rows))
+            right = 0;
+        else right = gray(y, x + 1);
+
+        if (checkBound(x - 1, y, color_input.cols, color_input.rows))
+            left = 0;
+        else left = gray(y, x - 1);
+
+        if (checkBound(x, y + 1, color_input.cols, color_input.rows))
+            bottom = 0;
+        else bottom = gray(y + 1, x);
+
+        if (checkBound(x, y - 1, color_input.cols, color_input.rows))
+            up = 0;
+        else up = gray(y - 1, x);
 
 
+        float answer = fabsf(right + left + up + bottom - 4.0f * gray(y, x));
 
-    //contrast
-    double right, left, up, bottom;
-    if (checkBound(x + 1, y))
-        right = 0;
-    else right = gray(y, x + 1);
+        C(y, x) = answer;
 
-    if (checkBound(x - 1, y))
-        left = 0;
-    else left = gray(y, x - 1);
 
-    if (checkBound(x , y+1))
-        bottom = 0;
-    else bottom = gray(y+1, x);
+        __syncthreads();
 
-    if (checkBound(x, y-1))
-        up = 0;
-    else up = gray(y-1, x);
+        //saturation
+        //stdev for each pixel
+        double tmp_r = R(y, x);
+        double tmp_g = G(y, x);
+        double tmp_b = B(y, x);
+        double mean = (tmp_r + tmp_g + tmp_b) / 3.0f;
+        float tmp_s = pow(tmp_r - mean, 2) + pow(tmp_g - mean, 2) + pow(tmp_b - mean, 2);
 
-    
-    /*double tmp = fabsf(double(lap(y, x)) );*/
 
-    C(y, x) = fabsf(right + left + up + bottom - 4.0f*gray(y, x));
-
-    
-
-    //C(y, x) = lap(y, x);
-    __syncthreads();
-
-    //saturation
-    double tmp_r = R(y, x);
-    double tmp_g = G(y, x);
-    double tmp_b = B(y, x);
-    double mean = (tmp_r + tmp_g + tmp_b) / 3.0f;
-    double tmp_s = pow(tmp_r - mean, 2) + pow(tmp_g - mean, 2) + pow(tmp_b - mean, 2);
-    
-    S(y, x) = sqrt(tmp_s / 3.0f);
-    
-
-    __syncthreads();
-
-    /*if (S(y, x) == 0.0f)
         S(y, x) = sqrt(tmp_s / 3.0f);
-    __syncthreads();*/
-
-    if (sqrt(tmp_s / 3.0f) != S(y, x)) {
-        printf("S1: %d, S2: %d\n", x, y);
-    }
 
 
-    if (threadId == 3860446) {
-        /*printf("mean: %f\n", mean);
-        printf("R: %f\n", tmp_r);
-        printf("G: %f\n", tmp_g);
-        printf("B: %f\n", tmp_b);*/
-        /*printf("S1: %f\n", sqrt(tmp_s / 3.0f));
-        printf("S2: %f\n", S(y, x));*/
-        /*if (sqrt(tmp_s / 3.0f) != S(y, x))
-            printf("S1: %f\n", sqrt(tmp_s / 3.0f));*/
-    }
+        __syncthreads();
 
-    
 
-    //Exposure
-    double tmp_s1 = pow((tmp_r - 0.5) / (0.2 * sqrt(2.0f)), 2);
-    tmp_s1 = exp(-tmp_s1);
 
-    double tmp_s2 = pow((tmp_g - 0.5) / (0.2 * sqrt(2.0f)), 2);
-    tmp_s2 = exp(-tmp_s2);
+        //Exposure
+        //weight intensity based on how close to 0.5 with a Gauss curve with sigma = 0.2
+        double tmp_s1 = pow((tmp_r - 0.5) / (2 * sqrt(0.2f)), 2);
+        tmp_s1 = exp(-tmp_s1);
 
-    double tmp_s3 = pow((tmp_b - 0.5) / (0.2 * sqrt(2.0f)), 2);
-    tmp_s3 = exp(-tmp_s3);
+        double tmp_s2 = pow((tmp_g - 0.5) / (2 * sqrt(0.2f)), 2);
+        tmp_s2 = exp(-tmp_s2);
 
-    E(y, x) = (tmp_s1 * tmp_s2 * tmp_s3);
+        double tmp_s3 = pow((tmp_b - 0.5) / (2 * sqrt(0.2f)), 2);
+        tmp_s3 = exp(-tmp_s3);
 
-    __syncthreads();
-    
-    /*if (threadId == 3860446) {
-        printf("mean: %f\n", mean);
-        printf("C: %f\n", C(969, 3826));
-        printf("S: %f\n", S(969, 3826));
-        printf("E: %f\n", E(969, 3826));
-    }*/
+        answer = (tmp_s1 * tmp_s2 * tmp_s3);
+
+        E(y, x) = answer;
+
         
+    }
+    __syncthreads();
 }
 
-__global__ void ComputeWeight(cuda::PtrStepSz<double> weight, cuda::PtrStepSz<double> weight_sum, cuda::PtrStepSz<double> C, cuda::PtrStepSz<double> S, cuda::PtrStepSz<double> E)
+__global__ void ComputeWeight(cuda::PtrStepSz<double> weight, cuda::PtrStepSz<double> weight_sum, cuda::PtrStepSz<float> C, cuda::PtrStepSz<float> S, cuda::PtrStepSz<float> E)
 {
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
     int threadId = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
 
-    int x = threadId % 3980;
-    int y = threadId / 3980;
+    int x = threadId % weight.cols;
+    int y = threadId / weight.cols;
 
-    weight(y, x) = C(y, x) * S(y, x) * E(y, x) + 1e-20;
-    weight_sum(y, x) += weight(y, x);
+    if (y < weight.rows) {
+        weight(y, x) = C(y, x) * S(y, x) * E(y, x) + 1e-20;
+        weight_sum(y, x) += weight(y, x);
+    }
 
     __syncthreads();
-
-    /*if (threadId == 1) {
-        printf("C: %f\n", C(969, 3826));
-        printf("S: %f\n", S(969, 3826));
-        printf("E: %f\n", E(969, 3826));
-        printf("weight: %g\n", weight(969, 3826));
-        printf("sum: %g\n", weight_sum(0, 1));
-    }*/
         
 }
 
@@ -295,25 +320,30 @@ __global__ void NormalizeWeight(cuda::PtrStepSz<double> weight, cuda::PtrStepSz<
     int blockId = blockIdx.x + blockIdx.y * gridDim.x;
     int threadId = blockId * (blockDim.x * blockDim.y) + (threadIdx.y * blockDim.x) + threadIdx.x;
 
-    int x = threadId % 3980;
-    int y = threadId / 3980;
+    int x = threadId % weight.cols;
+    int y = threadId / weight.cols;
 
-    weight(y, x) /= weight_sum(y, x);
+    if (y < weight.rows) {
+        weight(y, x) /= weight_sum(y, x);
+    }
+
+
     __syncthreads();
 }
 
 void compute_CSE(const cuda::GpuMat& input1, cuda::GpuMat& gray, cuda::GpuMat& C, cuda::GpuMat& S, cuda::GpuMat& E, cuda::GpuMat& W, cuda::GpuMat& All_W, 
                 cuda::GpuMat& R, cuda::GpuMat& G, cuda::GpuMat& B, cudaStream_t ss)
 {
-    
+    int rows = input1.rows;
+    int cols = input1.cols;
 
-    Color2Gray << <dim3(2999, 4), dim3(5, 199), 0, ss >> > (R, G, B, gray);
-
-
-    GPU_Mertens << <dim3(2999, 4), dim3(5, 199), 0, ss >> > (input1, gray, C, S, E, R, G, B);
+    Color2Gray << <dim3(rows, 6), dim3(5, 199), 0, ss >> > (R, G, B, gray);
 
 
-    ComputeWeight << <dim3(2999, 4), dim3(5, 199), 0, ss >> > (W, All_W, C, S, E);
+    GPU_Mertens << <dim3(rows, 6), dim3(5, 199), 0, ss >> > (input1, gray, C, S, E, R, G, B);
+
+
+    ComputeWeight << <dim3(rows, 6), dim3(5, 199), 0, ss >> > (W, All_W, C, S, E);
 
 
 }
@@ -327,9 +357,11 @@ int main()
 
     vector<Mat> W1;
 
+    const int scene_No = 0;
+
 	bool needsAlignment = true;
 
-	readImages(images);
+	readImages(images, scene_No);
 
     if (needsAlignment)
     {
@@ -360,6 +392,8 @@ int main()
     }
     else {
         //initializig
+        cout << "Merging using Exposure Fusion ... " << endl;
+
         cuda::GpuMat img1(images[0].rows, images[0].cols, CV_32FC3);
         cuda::GpuMat grayImages( images[0].rows, images[0].cols , CV_64FC1);
 
@@ -406,18 +440,15 @@ int main()
             img1.upload(images[i]);
 
             images[i].convertTo(images[i], CV_64FC3, 1.0 / 255);
-            vector<Mat> split_pic(3);
-            split(images[i], split_pic);
 
-            
+            vector< cuda::GpuMat > RGB;
 
-            R.upload(split_pic[0]);
-            G.upload(split_pic[1]);
-            B.upload(split_pic[2]);
+            cuda::split(images[i], RGB);
+
 
             Mat result;
 
-            compute_CSE(img1, grayImages, contrast, saturation, exposure, W, All_W, R, G, B, stream[i]);
+            compute_CSE(img1, grayImages, contrast, saturation, exposure, W, All_W, RGB[0], RGB[1], RGB[2], stream[i]);
 
             W.download(result);
 
@@ -431,45 +462,40 @@ int main()
         }
 
 
-        for (int i = 0; i < images.size(); i++)
-            cout << i << ": " << cpu_Weights[i].at<double>(969, 3826) << endl;
+        //for (int i = 0; i < images.size(); i++)
+        //    cout << i << ": " << cpu_Weights[i].at<double>(2907, 3625) << endl;
 
         // Normalizeing weight matrix
-        cudaStream_t streams[7];
+        cuda::Stream stream1[7];
+
+        //cudaStream_t streams[7];
 
         for (int i = 0; i < num_streams; i++) {
 
-            cudaStreamCreate(&streams[i]);
+            //cudaStreamCreate(&streams[i]);
 
             W.upload(cpu_Weights[i]);
 
-            // launch one worker kernel per stream
-            NormalizeWeight << <dim3(2999, 4), dim3(5, 199), 0, streams[i] >> > (W, All_W);
+            cuda::divide(W, All_W, W, 1, -1, stream1[i]);
+            //NormalizeWeight << <dim3(2999, 4), dim3(5, 199), 0, streams[i] >> > (W, All_W);
             Mat result;
-            W.download(result);
+            W.download(cpu_Weights[i]);
 
-            cpu_Weights[i] = result;
+            //cpu_Weights[i] = result;
 
         }
         cudaDeviceSynchronize();
-        for(int i = 0; i < num_streams; i++) {
+        /*for(int i = 0; i < num_streams; i++) {
             cudaStreamDestroy(streams[i]);
-        }
+        }*/
 
-        for (int i = 0; i < images.size(); i++)
-            cout << i << ": " << cpu_Weights[i].at<double>(969, 3826) << endl;
+        //for (int i = 0; i < images.size(); i++)
+        //    cout << i << ": " << cpu_Weights[i].at<double>(2907, 3625) << endl;
 
-        //Mat up;
-        //vector<Mat> final_pics(_para[3] + 1);
-        //vector< vector<Mat> > pics_pyr(images.size()), W_pyr(images.size());
-        //for (int i = 0; i < images.size(); ++i) {
-        //    //cpu_Weights[i] /= ALL_W;
-        //    buildPyramid(images[i], pics_pyr[i], _para[3]);
-        //    buildPyramid(cpu_Weights[i], W_pyr[i], _para[3]);
-        //}
+
 
         //build pyramid
-        cuda::Stream stream1 [7];
+        
 
         vector<Mat> final_pics(_para[3] + 1);
         vector< vector<Mat> > pics_pyr(images.size()), W_pyr(images.size());
@@ -511,9 +537,10 @@ int main()
         for (int i = 0; i <= _para[3]; ++i)
             final_pics[i] = Mat(pics_pyr[0][i].size(), CV_32FC3, Scalar::all(0));
 
+        
+
         for (int i = 0; i < num_streams; i++) {
-            
-            
+
             
             for (int j = 0; j < _para[3]; j++) {
                 
@@ -537,17 +564,9 @@ int main()
                 subtractResult.download(pics_pyr[i][j], stream1[i]);
             }
             for (int j = 0; j <= _para[3]; j++) {
-                cuda::GpuMat tmp_R;
-                cuda::GpuMat tmp_G;
-                cuda::GpuMat tmp_B;
+
                 cuda::GpuMat tmp_W;
 
-                /*vector<Mat> split_pic(3);
-                split(pics_pyr[i][j], split_pic);*/
-
-                /*tmp_R.upload(split_pic[0]);
-                tmp_G.upload(split_pic[1]);
-                tmp_B.upload(split_pic[2]);*/
                 tmp_W.upload(W_pyr[i][j]);
 
                 vector< cuda::GpuMat > dst;
@@ -565,67 +584,44 @@ int main()
 
         }
 
-        Mat tmp3, tmp4;
+        //Mat tmp3, tmp4;
+        cuda::Stream stream2[8];
         for (int i = _para[3] - 1; i >= 0; --i) {
-            pyrUp(final_pics[i + 1], tmp3, final_pics[i].size());
-            final_pics[i] += tmp3;
+            cuda::GpuMat up_image;
+
+            cuda::GpuMat bot_image(final_pics[i + 1]);
+            cuda::GpuMat ex_add(final_pics[i]);
+            cuda::pyrUp(bot_image, up_image, stream2[7 - i]);
+            cuda::GpuMat addResult;
+
+            int pad_col = up_image.cols - ex_add.cols;
+            int pad_row = up_image.rows - ex_add.rows;
+
+            cuda::GpuMat cropped(up_image, Rect(0, 0, up_image.cols - pad_col, up_image.rows - pad_row));
+
+            cuda::add(ex_add, cropped, addResult, noArray(), -1, stream2[7 - i]);
+
+            addResult.download(final_pics[i], stream2[7 - i]);
+
         }
 
-        tmp4 = final_pics[0].clone();
+        
 
-        imwrite("exposure-fusion_gpu.jpg", tmp4 * 255);
 
-        /*Mat up, tmp4;
-
-        for (int i = 0; i <= _para[3]; ++i)
-            final_pics[i] = Mat(pics_pyr[0][i].size(), CV_64FC3, Scalar::all(0));
-        for (int i = 0; i < images.size(); ++i) {
-            for (int j = 0; j < _para[3]; ++j) {
-                pyrUp(pics_pyr[i][j + 1], up, pics_pyr[i][j].size());
-                pics_pyr[i][j] -= up;
-            }
-            for (int j = 0; j <= _para[3]; ++j) {
-                vector<Mat> split_pics_pyr(3);
-                split(pics_pyr[i][j], split_pics_pyr);
-                for (int c = 0; c < 3; ++c)
-                    split_pics_pyr[c] = split_pics_pyr[c].mul(W_pyr[i][j]);
-                merge(split_pics_pyr, pics_pyr[i][j]);
-                final_pics[j] += pics_pyr[i][j];
-            }
-        }
-        for (int i = _para[3] - 1; i >= 0; --i) {
-            pyrUp(final_pics[i + 1], up, final_pics[i].size());
-            final_pics[i] += up;
-        }
-
-        tmp4 = final_pics[0].clone();
-
-        imwrite("exposure-fusion_gpu.jpg", tmp4 * 255);*/
-
-        /*for (int i = 0; i < _para[3]; i++) {
-            string name = to_string(i) + ".jpg";
-            imwrite(name, pics_pyr[2][i] * 255);
-        }*/
 
         cudaEventRecord(end);
         cudaEventSynchronize(end);
         cudaEventElapsedTime(&gpu_time, start, end);
-        printf("\nAsync function call: %.4f ms\n", gpu_time);
+        printf("\ncuda exposure fusion call: %.4f ms\n", gpu_time);
         cudaEventDestroy(start);
         cudaEventDestroy(end);
 
+        Mat tmp4;
+        tmp4 = final_pics[0].clone();
 
-
-
+        imwrite("exposure-fusion_gpu.jpg", tmp4 * 255);
  
     }
-	
-
-
-	if (cuda::getCudaEnabledDeviceCount() == 0)
-		printf("NO CUDA\n");
-	else
-		printf("CUDA = %d\n", cuda::getCudaEnabledDeviceCount());
 
 	return 0;
 }
